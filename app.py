@@ -26,8 +26,6 @@ from data_manager import (
     get_cities_by_province, get_td_by_city
 )
 
-# Word 导出（注释掉，改为在导出按钮中动态导入）
-# from word_export import export_calculation_report
 
 # 参数
 from params import PROVINCES, C1_OPTIONS, C2_OPTIONS, C3_OPTIONS, C4_OPTIONS, C5_OPTIONS, C6_OPTIONS
