@@ -1,0 +1,17 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+
+# IDE 配置（可选）
+.idea/
+.vscode/
+
+# 本地数据文件（可选，如果不想提交 Excel 数据）
+# thunderstorm_data.xlsx
