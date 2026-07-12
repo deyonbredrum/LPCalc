@@ -1,22 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-Word 计算书导出模块 - 使用 docxtpl（更稳定）
+Word 计算书导出模块 - 懒加载版（每个函数独立导入）
 """
 
 import io
-import os
 from datetime import datetime
-from docxtpl import DocxTemplate
-from docx.shared import Pt, RGBColor, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+
+
+def get_docx():
+    """
+    在每个函数中独立导入 docx 库
+    这样即使导入失败，也只影响当前函数，不会导致整个模块崩溃
+    """
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    return Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement
 
 
 def set_cell_font(cell, text, font_name='宋体', font_size=10.5, bold=False,
                   color=None, alignment='left'):
-    """设置单元格内容和字体"""
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     cell.text = text
     paragraph = cell.paragraphs[0]
     run = paragraph.runs[0]
@@ -34,6 +41,7 @@ def set_cell_font(cell, text, font_name='宋体', font_size=10.5, bold=False,
 
 
 def set_heading_font(paragraph, font_name='黑体', font_size=16, bold=True, color=(0, 0, 0)):
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
     run.font.name = font_name
     run.font.size = Pt(font_size)
@@ -44,6 +52,7 @@ def set_heading_font(paragraph, font_name='黑体', font_size=16, bold=True, col
 
 
 def set_cell_background(cell, color_hex='D9E1F2'):
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     tc = cell._element
     tcPr = tc.get_or_add_tcPr()
     shd = OxmlElement('w:shd')
@@ -54,7 +63,7 @@ def set_cell_background(cell, color_hex='D9E1F2'):
 
 
 def build_basic_info_section(doc):
-    """构建基本信息部分（不含电子防护）"""
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     heading = doc.add_heading('一、基本信息', level=1)
     set_heading_font(heading, '黑体', 16, True, (0, 51, 102))
 
@@ -71,7 +80,7 @@ def build_basic_info_section(doc):
 
 
 def build_input_params_section(doc, building_params, include_ep=True):
-    """构建输入参数部分"""
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     heading = doc.add_heading('二、输入参数', level=1)
     set_heading_font(heading, '黑体', 16, True, (0, 51, 102))
 
@@ -104,6 +113,7 @@ def build_input_params_section(doc, building_params, include_ep=True):
 
 
 def build_lp_section(doc, lp_result, level_text):
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     heading = doc.add_heading('三、防雷等级计算', level=1)
     set_heading_font(heading, '黑体', 16, True, (0, 51, 102))
 
@@ -150,6 +160,7 @@ def build_lp_section(doc, lp_result, level_text):
 
 def build_conclusion_section(doc, lp_result, level_text, ep_result=None,
                              ep_level_text=None, has_ep=False, building_attr="", attr_type=""):
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
     N = lp_result.get('N', 0)
 
     heading = doc.add_heading('四、结论', level=1)
@@ -158,7 +169,7 @@ def build_conclusion_section(doc, lp_result, level_text, ep_result=None,
     p = doc.add_paragraph()
     run = p.add_run('1. ')
     run.bold = True
-    p.add_run(f'根据 GB 50057-2010 计算，该建筑物的防雷等级为：')
+    p.add_run('根据 GB 50057-2010 计算，该建筑物的防雷等级为：')
     run = p.add_run(f' {level_text}')
     run.bold = True
     run.font.color.rgb = RGBColor(0, 112, 192)
@@ -168,7 +179,7 @@ def build_conclusion_section(doc, lp_result, level_text, ep_result=None,
         p = doc.add_paragraph()
         run = p.add_run('2. ')
         run.bold = True
-        p.add_run(f'根据 GB 50343-2012 计算，该建筑物的电子信息系统雷电防护等级为：')
+        p.add_run('根据 GB 50343-2012 计算，该建筑物的电子信息系统雷电防护等级为：')
         run = p.add_run(f' {ep_level_text}')
         run.bold = True
         if 'A' in ep_level_text:
@@ -198,10 +209,10 @@ def export_calculation_report(lp_result, ep_result, building_params,
                               cable_params, c_factors, level_text, ep_level_text,
                               export_mode='combined', has_ep=True,
                               building_attr="", attr_type=""):
-    """使用 python-docx-template 导出 Word（稳定版）"""
-    from docx import Document as DocxDocument
+    """导出 Word 计算书"""
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
 
-    doc = DocxDocument()
+    doc = Document()
 
     style = doc.styles['Normal']
     style.font.name = '宋体'
@@ -216,16 +227,9 @@ def export_calculation_report(lp_result, ep_result, building_params,
     doc.add_paragraph('_' * 50).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
-    # 基本信息
     build_basic_info_section(doc)
-
-    # 输入参数
     build_input_params_section(doc, building_params)
-
-    # 防雷计算
     build_lp_section(doc, lp_result, level_text)
-
-    # 结论
     build_conclusion_section(doc, lp_result, level_text, ep_result,
                              ep_level_text, has_ep, building_attr, attr_type)
 
@@ -238,11 +242,11 @@ def export_calculation_report(lp_result, ep_result, building_params,
 def export_separate_reports(lp_result, ep_result, building_params,
                             cable_params, c_factors, level_text, ep_level_text,
                             building_attr="", attr_type=""):
-    """分开导出（防雷和电子防护各一个文件）"""
-    from docx import Document as DocxDocument
+    """分开导出"""
+    Document, Pt, RGBColor, Cm, WD_ALIGN_PARAGRAPH, WD_TABLE_ALIGNMENT, qn, OxmlElement = get_docx()
 
     # ===== 防雷等级计算书 =====
-    doc_lp = DocxDocument()
+    doc_lp = Document()
     style = doc_lp.styles['Normal']
     style.font.name = '宋体'
     style.font.size = Pt(10.5)
@@ -282,7 +286,7 @@ def export_separate_reports(lp_result, ep_result, building_params,
     lp_buffer.seek(0)
 
     # ===== 电子防护等级计算书 =====
-    doc_ep = DocxDocument()
+    doc_ep = Document()
     style = doc_ep.styles['Normal']
     style.font.name = '宋体'
     style.font.size = Pt(10.5)
