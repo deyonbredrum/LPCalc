@@ -26,8 +26,8 @@ from data_manager import (
     get_cities_by_province, get_td_by_city
 )
 
-# Word 导出
-from word_export import export_calculation_report
+# Word 导出（注释掉，改为在导出按钮中动态导入）
+# from word_export import export_calculation_report
 
 # 参数
 from params import PROVINCES, C1_OPTIONS, C2_OPTIONS, C3_OPTIONS, C4_OPTIONS, C5_OPTIONS, C6_OPTIONS
@@ -48,7 +48,6 @@ with st.sidebar:
     H = st.number_input("建筑物高 H (m)", min_value=0.1, value=6.5, step=0.5)
 
     # ---- 分类2：地理位置 ----
-    # ---- 分类2：地理位置 ----
     st.subheader("📍 地理位置")
 
     # 从 Excel 加载数据
@@ -61,9 +60,7 @@ with st.sidebar:
     # 根据省份显示城市
     cities_in_province = get_cities_by_province(td_data, selected_province)
     if cities_in_province:
-        # 默认选中第一个城市
         default_city_index = 0
-        # 如果上海在列表中，默认选中上海
         if "上海" in cities_in_province:
             default_city_index = cities_in_province.index("上海")
         city_sel = st.selectbox("选择城市", cities_in_province, index=default_city_index)
@@ -80,13 +77,11 @@ with st.sidebar:
     # 手动输入选项
     use_manual_city = st.checkbox("手动输入年雷暴日")
 
-    # ===== 关键修复：确保所有分支都定义 city 和 manual_city =====
     if use_manual_city:
         manual_td = st.number_input("年雷暴日 Td (d/a)", min_value=0.1, value=30.0, step=0.1)
         manual_city = city_sel if city_sel else "自定义城市"
         city = manual_city
     else:
-        # 即使不勾选手动输入，也要定义这些变量
         manual_city = city_sel if city_sel else "上海"
         manual_td = current_td if current_td is not None else 30.0
         city = city_sel if city_sel else "上海"
@@ -144,9 +139,14 @@ with tab1:
         if st.button("计算防雷等级", key="calc_lp", type="primary", width="stretch"):
             with st.spinner("计算中..."):
                 if use_manual_city:
-                    from params import CITY_TD
-                    CITY_TD[manual_city] = manual_td
+                    # 使用手动输入的年雷暴日
+                    # 临时修改数据字典
+                    td_data_local = load_data_from_excel()
+                    td_data_local[selected_province][manual_city] = manual_td
+                    # 重新赋值 city
                     city = manual_city
+                else:
+                    city = city_sel
 
                 result = calc_lightning_protection(
                     L=L, W=W, H=H,
@@ -156,7 +156,6 @@ with tab1:
                     Lz=Lz
                 )
 
-                # 保存到 session_state
                 st.session_state.last_lp_result = result
 
                 attr_type = BUILDING_ATTR.get(building_attr, "normal")
@@ -198,30 +197,26 @@ with tab2:
 
     st.info("ℹ️ 复用防雷等级计算中的 N1 和 Ng 结果")
 
-    # ---- 参数选择区 ----
     col_param1, col_param2 = st.columns(2)
 
     with col_param1:
         st.subheader("📥 入户设施参数")
 
-        # 电源线缆
         power_cable_display = st.selectbox("电源线缆入户方式", get_power_cable_options())
         power_config = get_power_cable_coef(power_cable_display)
         power_cable_type = power_config["type"]
         power_cable_coef = power_config["coef"]
 
-        # 显示公式
         if power_cable_type == "fiber":
             st.caption(f"✅ {power_cable_display} → Ae1' = 0")
         elif power_cable_type == "overhead":
             st.caption(f"✅ {power_cable_display} → Ae1' = {power_cable_coef:.1f} × L × 10⁻⁶")
             st.caption(f"   L = {L_cable} m")
-        else:  # buried
+        else:
             ds_display = min(soil_resistivity, 500) if soil_resistivity > 0 else 500
             st.caption(f"✅ {power_cable_display} → Ae1' = {power_cable_coef:.1f} × ds × L × 10⁻⁶")
             st.caption(f"   ds = min(ρs, 500) = {ds_display:.1f} m, L = {L_cable} m")
 
-        # 信号线缆
         signal_cable_display = st.selectbox("信号线缆入户方式", get_signal_cable_options())
         signal_config = get_signal_cable_coef(signal_cable_display)
         signal_cable_type = signal_config["type"]
@@ -232,7 +227,7 @@ with tab2:
         elif signal_cable_type == "overhead":
             st.caption(f"✅ {signal_cable_display} → Ae2' = {signal_cable_coef:.1f} × L × 10⁻⁶")
             st.caption(f"   L = {L_cable} m")
-        else:  # buried
+        else:
             ds_display = min(soil_resistivity, 500) if soil_resistivity > 0 else 500
             st.caption(f"✅ {signal_cable_display} → Ae2' = {signal_cable_coef:.1f} × ds × L × 10⁻⁶")
             st.caption(f"   ds = min(ρs, 500) = {ds_display:.1f} m, L = {L_cable} m")
@@ -272,14 +267,13 @@ with tab2:
             c6_val = C6_OPTIONS[c6_type]
             st.caption(f"值：{c6_val:.2f}")
 
-    # ---- 计算按钮和结果 ----
     if st.button("计算防护等级", key="calc_ep", type="primary", width="stretch"):
         with st.spinner("计算中..."):
             try:
                 if use_manual_city:
-                    from params import CITY_TD
-                    CITY_TD[manual_city] = manual_td
                     city = manual_city
+                else:
+                    city = city_sel
 
                 lp_result = calc_lightning_protection(
                     L=L, W=W, H=H,
@@ -292,7 +286,6 @@ with tab2:
                 N1 = lp_result["N"]
                 Ng = lp_result["Ng"]
 
-                # 保存到 session_state
                 st.session_state.last_lp_result = lp_result
 
                 ep_result = calc_electronic_protection(
@@ -320,7 +313,6 @@ with tab2:
                     signal_cable_display=signal_cable_display,
                 )
 
-                # 保存到 session_state
                 st.session_state.last_ep_result = ep_result
 
                 col1, col2 = st.columns(2)
@@ -380,12 +372,10 @@ with tab2:
                 st.error(f"计算失败：{e}")
                 st.code(f"错误详情：{e}", language="python")
 
-# ==================== Tab 3: 数据管理 ====================
 with tab3:
     st.header("📁 年雷暴日数据管理")
     st.caption("管理各省份城市的年雷暴日数据，数据保存在 thunderstorm_data.xlsx 文件中")
 
-    # 加载数据
     td_data = load_data_from_excel()
 
     col_manage, col_preview = st.columns([1, 1])
@@ -393,14 +383,10 @@ with tab3:
     with col_manage:
         st.subheader("➕ 添加/修改城市")
 
-        # 选择省份
         provinces_list = sorted(td_data.keys())
         selected_prov = st.selectbox("选择省份", provinces_list, key="manage_province")
 
-        # 城市名
         city_name = st.text_input("城市名称", key="manage_city")
-
-        # 年雷暴日
         td_value = st.number_input("年雷暴日 (d/a)", min_value=0.0, value=30.0, step=0.1, key="manage_td")
 
         col_btn1, col_btn2 = st.columns(2)
@@ -422,7 +408,6 @@ with tab3:
                 else:
                     st.warning("请输入要删除的城市名称")
 
-        # 新增省份
         st.subheader("➕ 新增省份")
         new_prov = st.text_input("新省份名称", key="new_province")
         if st.button("新增省份", key="add_prov_btn", width="stretch"):
@@ -438,8 +423,6 @@ with tab3:
 
     with col_preview:
         st.subheader("📊 数据预览")
-
-        # 将数据转为 DataFrame 显示
         rows = []
         for prov, cities in td_data.items():
             for cty, tdv in cities.items():
@@ -452,22 +435,16 @@ with tab3:
         else:
             st.info("暂无数据")
 
-# ==================== Tab 4: 导出设置 ====================
-# ==================== Tab 4: 导出设置 ====================
 with tab4:
     st.header("📤 导出 Word 计算书")
     st.caption("将当前计算结果导出为 Word 文档")
 
-    # 检查是否有计算结果
     if 'last_lp_result' in st.session_state:
-
-        # ---- 导出选项 ----
         st.subheader("📋 导出选项")
 
         col_opt1, col_opt2 = st.columns(2)
 
         with col_opt1:
-            # 选择导出内容
             export_content = st.radio(
                 "选择导出内容",
                 options=["仅防雷等级", "仅电子防护等级", "两者都导出"],
@@ -476,7 +453,6 @@ with tab4:
             )
 
         with col_opt2:
-            # 是否分开文件（仅当两者都导出时可用）
             if export_content == "两者都导出":
                 export_mode = st.radio(
                     "文件合并方式",
@@ -485,10 +461,9 @@ with tab4:
                     help="合并：防雷+电子防护在同一份计算书中；分开：各生成独立文件"
                 )
             else:
-                export_mode = "合并到一个文件"  # 单内容时默认合并
+                export_mode = "合并到一个文件"
                 st.info("ℹ️ 仅导出单项内容，将生成单个文件")
 
-        # ---- 文件名 ----
         st.subheader("📄 文件名")
         now_str = datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -506,122 +481,108 @@ with tab4:
                 default_filename = f"电子防护等级计算书_{now_str}.docx"
             filename = st.text_input("文件名", value=default_filename)
 
-        # ---- 导出按钮 ----
         if st.button("📥 导出 Word 计算书", key="export_word", type="primary", width="stretch"):
             with st.spinner("正在生成计算书..."):
-                # 构建参数
-                building_params = {
-                    "建筑物长 L": f"{L} m",
-                    "建筑物宽 W": f"{W} m",
-                    "建筑物高 H": f"{H} m",
-                    "城市": city,
-                    "周边情况": surrounding_type,
-                    "建筑物状况": building_condition,
-                    "建筑物属性": building_attr,
-                    "土壤电阻率": f"{soil_resistivity} Ω·m",
-                    "线路长度": f"{L_cable} m",
-                }
+                try:
+                    from word_export import export_calculation_report
 
-                cable_params = {
-                    "电源线缆入户方式": power_cable_display if 'power_cable_display' in locals() else "未选择",
-                    "信号线缆入户方式": signal_cable_display if 'signal_cable_display' in locals() else "未选择",
-                }
+                    building_params = {
+                        "建筑物长 L": f"{L} m",
+                        "建筑物宽 W": f"{W} m",
+                        "建筑物高 H": f"{H} m",
+                        "城市": city,
+                        "周边情况": surrounding_type,
+                        "建筑物状况": building_condition,
+                        "建筑物属性": building_attr,
+                        "土壤电阻率": f"{soil_resistivity} Ω·m",
+                        "线路长度": f"{L_cable} m",
+                    }
 
-                c_factors = {
-                    "C1": {"type": c1_type, "val": c1_val},
-                    "C2": {"type": c2_type, "val": c2_val},
-                    "C3": {"type": c3_type, "val": c3_val},
-                    "C4": {"type": c4_type, "val": c4_val},
-                    "C5": {"type": c5_type, "val": c5_val},
-                    "C6": {"type": c6_type, "val": c6_val},
-                }
+                    cable_params = {
+                        "电源线缆入户方式": power_cable_display if 'power_cable_display' in locals() else "未选择",
+                        "信号线缆入户方式": signal_cable_display if 'signal_cable_display' in locals() else "未选择",
+                    }
 
-                # 获取防雷等级
-                attr_type = BUILDING_ATTR.get(building_attr, "normal")
-                level_num = get_lightning_level(st.session_state.last_lp_result["N"], attr_type)
-                level_map = {1: "一类", 2: "二类", 3: "三类"}
-                level_text = level_map.get(level_num, "未达到设防要求")
+                    c_factors = {
+                        "C1": {"type": c1_type, "val": c1_val},
+                        "C2": {"type": c2_type, "val": c2_val},
+                        "C3": {"type": c3_type, "val": c3_val},
+                        "C4": {"type": c4_type, "val": c4_val},
+                        "C5": {"type": c5_type, "val": c5_val},
+                        "C6": {"type": c6_type, "val": c6_val},
+                    }
 
-                # ===== 根据导出内容决定 mode 和 has_ep =====
-                if export_content == "仅防雷等级":
-                    # 只导出防雷
-                    mode = 'combined'
-                    has_ep = False
-                    ep_result = None
-                    ep_level_text = None
+                    attr_type = BUILDING_ATTR.get(building_attr, "normal")
+                    level_num = get_lightning_level(st.session_state.last_lp_result["N"], attr_type)
+                    level_map = {1: "一类", 2: "二类", 3: "三类"}
+                    level_text = level_map.get(level_num, "未达到设防要求")
 
-                elif export_content == "仅电子防护等级":
-                    # 只导出电子防护
-                    if 'last_ep_result' not in st.session_state:
-                        st.error("❌ 请先在「电子信息防护等级」页面中计算一次")
-                        st.stop()
-                    mode = 'combined'
-                    has_ep = True
-                    ep_result = st.session_state.last_ep_result
-                    ep_level_text = ep_result.get("level", "未计算")
-
-                else:
-                    # 两者都导出
-                    has_ep = True
-                    ep_result = st.session_state.last_ep_result if 'last_ep_result' in st.session_state else None
-                    ep_level_text = ep_result.get("level", "未计算") if ep_result else "未计算"
-
-                    # 根据用户选择决定合并还是分开
-                    if export_mode == "分开两个文件":
-                        mode = 'separate'
-                    else:
+                    if export_content == "仅防雷等级":
                         mode = 'combined'
+                        has_ep = False
+                        ep_result = None
+                        ep_level_text = None
+                    elif export_content == "仅电子防护等级":
+                        if 'last_ep_result' not in st.session_state:
+                            st.error("❌ 请先在「电子信息防护等级」页面中计算一次")
+                            st.stop()
+                        mode = 'combined'
+                        has_ep = True
+                        ep_result = st.session_state.last_ep_result
+                        ep_level_text = ep_result.get("level", "未计算")
+                    else:
+                        has_ep = True
+                        ep_result = st.session_state.last_ep_result if 'last_ep_result' in st.session_state else None
+                        ep_level_text = ep_result.get("level", "未计算") if ep_result else "未计算"
+                        mode = 'separate' if export_mode == "分开两个文件" else 'combined'
 
-                # 获取建筑物属性类型
-                attr_type = BUILDING_ATTR.get(building_attr, "normal")
-
-                # 执行导出
-                result = export_calculation_report(
-                    lp_result=st.session_state.last_lp_result,
-                    ep_result=ep_result,
-                    building_params=building_params,
-                    cable_params=cable_params,
-                    c_factors=c_factors,
-                    level_text=level_text,
-                    ep_level_text=ep_level_text,
-                    export_mode=mode,
-                    has_ep=has_ep,
-                    building_attr=building_attr,  # ← 新增
-                    attr_type=attr_type  # ← 新增
-                )
-                # 根据导出模式显示下载按钮
-                if mode == 'separate':
-                    # 分开导出：两个下载按钮
-                    lp_buffer, ep_buffer = result
-
-                    col_dl1, col_dl2 = st.columns(2)
-                    with col_dl1:
-                        st.download_button(
-                            label="📥 下载防雷等级计算书",
-                            data=lp_buffer,
-                            file_name=lp_filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            width="stretch"
-                        )
-                    with col_dl2:
-                        st.download_button(
-                            label="📥 下载电子防护等级计算书",
-                            data=ep_buffer,
-                            file_name=ep_filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            width="stretch"
-                        )
-                    st.success("✅ 两份计算书已生成，请分别点击下载")
-                else:
-                    # 合并导出：单个下载按钮
-                    st.download_button(
-                        label="📥 下载 Word 计算书",
-                        data=result,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        width="stretch"
+                    result = export_calculation_report(
+                        lp_result=st.session_state.last_lp_result,
+                        ep_result=ep_result,
+                        building_params=building_params,
+                        cable_params=cable_params,
+                        c_factors=c_factors,
+                        level_text=level_text,
+                        ep_level_text=ep_level_text,
+                        export_mode=mode,
+                        has_ep=has_ep,
+                        building_attr=building_attr,
+                        attr_type=attr_type
                     )
-                    st.success("✅ 计算书生成完成，请点击下载")
+
+                    if mode == 'separate':
+                        lp_buffer, ep_buffer = result
+                        col_dl1, col_dl2 = st.columns(2)
+                        with col_dl1:
+                            st.download_button(
+                                label="📥 下载防雷等级计算书",
+                                data=lp_buffer,
+                                file_name=lp_filename,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                width="stretch"
+                            )
+                        with col_dl2:
+                            st.download_button(
+                                label="📥 下载电子防护等级计算书",
+                                data=ep_buffer,
+                                file_name=ep_filename,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                width="stretch"
+                            )
+                        st.success("✅ 两份计算书已生成，请分别点击下载")
+                    else:
+                        st.download_button(
+                            label="📥 下载 Word 计算书",
+                            data=result,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            width="stretch"
+                        )
+                        st.success("✅ 计算书生成完成，请点击下载")
+
+                except Exception as e:
+                    st.error(f"导出失败：{e}")
+                    st.code(f"错误详情：{e}", language="python")
 
     else:
         st.info("ℹ️ 请先在「防雷等级计算」或「电子信息防护等级」页面中计算一次，再导出计算书")
