@@ -471,20 +471,20 @@ with tab4:
             col_name1, col_name2 = st.columns(2)
             with col_name1:
                 lp_filename = st.text_input("防雷等级计算书文件名",
-                                            value=f"防雷等级计算书_{now_str}.docx")
+                                            value=f"防雷等级计算书_{now_str}.xlsx")
             with col_name2:
                 ep_filename = st.text_input("电子防护等级计算书文件名",
-                                            value=f"电子防护等级计算书_{now_str}.docx")
+                                            value=f"电子防护等级计算书_{now_str}.xlsx")
         else:
-            default_filename = f"防雷计算书_{now_str}.docx"
+            default_filename = f"防雷计算书_{now_str}.xlsx"
             if export_content == "仅电子防护等级":
-                default_filename = f"电子防护等级计算书_{now_str}.docx"
+                default_filename = f"电子防护等级计算书_{now_str}.xlsx"
             filename = st.text_input("文件名", value=default_filename)
 
-        if st.button("📥 导出 Word 计算书", key="export_word", type="primary", width="stretch"):
+        if st.button("📥 导出 Excel 计算书", key="export_word", type="primary", width="stretch"):
             with st.spinner("正在生成计算书..."):
                 try:
-                    from word_export import export_calculation_report
+                    from excel_export import export_excel_report, export_excel_separate
 
                     building_params = {
                         "建筑物长 L": f"{L} m",
@@ -536,29 +536,25 @@ with tab4:
                         ep_level_text = ep_result.get("level", "未计算") if ep_result else "未计算"
                         mode = 'separate' if export_mode == "分开两个文件" else 'combined'
 
-                    result = export_calculation_report(
-                        lp_result=st.session_state.last_lp_result,
-                        ep_result=ep_result,
-                        building_params=building_params,
-                        cable_params=cable_params,
-                        c_factors=c_factors,
-                        level_text=level_text,
-                        ep_level_text=ep_level_text,
-                        export_mode=mode,
-                        has_ep=has_ep,
-                        building_attr=building_attr,
-                        attr_type=attr_type
-                    )
-
                     if mode == 'separate':
-                        lp_buffer, ep_buffer = result
+                        lp_buffer, ep_buffer = export_excel_separate(
+                            lp_result=st.session_state.last_lp_result,
+                            ep_result=ep_result,
+                            building_params=building_params,
+                            cable_params=cable_params,
+                            c_factors=c_factors,
+                            level_text=level_text,
+                            ep_level_text=ep_level_text,
+                            building_attr=building_attr,
+                            attr_type=attr_type
+                        )
                         col_dl1, col_dl2 = st.columns(2)
                         with col_dl1:
                             st.download_button(
                                 label="📥 下载防雷等级计算书",
                                 data=lp_buffer,
                                 file_name=lp_filename,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 width="stretch"
                             )
                         with col_dl2:
@@ -566,16 +562,29 @@ with tab4:
                                 label="📥 下载电子防护等级计算书",
                                 data=ep_buffer,
                                 file_name=ep_filename,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 width="stretch"
                             )
                         st.success("✅ 两份计算书已生成，请分别点击下载")
                     else:
+                        result = export_excel_report(
+                            lp_result=st.session_state.last_lp_result,
+                            ep_result=ep_result,
+                            building_params=building_params,
+                            cable_params=cable_params,
+                            c_factors=c_factors,
+                            level_text=level_text,
+                            ep_level_text=ep_level_text,
+                            export_mode=mode,
+                            has_ep=has_ep,
+                            building_attr=building_attr,
+                            attr_type=attr_type
+                        )
                         st.download_button(
-                            label="📥 下载 Word 计算书",
+                            label="📥 下载 Excel 计算书",
                             data=result,
                             file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             width="stretch"
                         )
                         st.success("✅ 计算书生成完成，请点击下载")
