@@ -48,15 +48,18 @@ with st.sidebar:
     # ---- 分类2：地理位置 ----
     st.subheader("📍 地理位置")
 
-    # 从 Excel 加载数据
-    td_data = load_data_from_excel()
-    provinces = sorted(td_data.keys())
+    # 使用硬编码省份列表（启动时不需要读取 Excel）
+    from params import PROVINCES
 
-    # 选择省份
+    provinces = PROVINCES
+
     selected_province = st.selectbox("选择省份", provinces)
 
-    # 根据省份显示城市
-    cities_in_province = get_cities_by_province(td_data, selected_province)
+    # 获取城市列表（从硬编码数据中获取）
+    from params import PROVINCE_CITY_TD
+
+    cities_in_province = sorted(PROVINCE_CITY_TD.get(selected_province, {}).keys())
+
     if cities_in_province:
         default_city_index = 0
         if "上海" in cities_in_province:
@@ -65,16 +68,14 @@ with st.sidebar:
     else:
         city_sel = st.text_input("输入城市名称", value="自定义城市")
 
-    # 显示当前城市的年雷暴日
-    current_td = get_td_by_city(td_data, city_sel) if city_sel else None
+    # 显示年雷暴日（从硬编码数据中获取）
+    current_td = PROVINCE_CITY_TD.get(selected_province, {}).get(city_sel, None) if city_sel else None
     if current_td is not None:
         st.caption(f"📍 {city_sel} 年雷暴日：{current_td:.1f} d/a")
     else:
         st.caption("⚠️ 该城市数据未录入，请手动输入年雷暴日")
 
-    # 手动输入选项
     use_manual_city = st.checkbox("手动输入年雷暴日")
-
     if use_manual_city:
         manual_td = st.number_input("年雷暴日 Td (d/a)", min_value=0.1, value=30.0, step=0.1)
         manual_city = city_sel if city_sel else "自定义城市"
@@ -374,7 +375,13 @@ with tab3:
     st.header("📁 年雷暴日数据管理")
     st.caption("管理各省份城市的年雷暴日数据，数据保存在 thunderstorm_data.xlsx 文件中")
 
-    td_data = load_data_from_excel()
+    # 在这里才加载数据（惰性加载）
+    if 'td_data' not in st.session_state:
+        with st.spinner("加载数据..."):
+            st.session_state.td_data = load_data_from_excel()
+
+    td_data = st.session_state.td_data
+    # ... 后续代码 ...
 
     col_manage, col_preview = st.columns([1, 1])
 
