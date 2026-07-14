@@ -37,16 +37,16 @@ def calc_equivalent_area(L, W, H, surrounding_type, Lz=0):
 def calc_lightning_protection(L, W, H, city, building_condition,
                               surrounding_type="周边2D范围内无其他建筑", Lz=0):
     """计算防雷等级"""
-    from data_manager import load_data_from_excel, get_td_by_city
+    from params import PROVINCE_CITY_TD
 
-    # 从 Excel 加载数据
-    td_data = load_data_from_excel()
+    # 从字典中获取年雷暴日
+    Td = None
+    for province, cities in PROVINCE_CITY_TD.items():
+        if city in cities:
+            Td = cities[city]
+            break
 
-    # 获取年雷暴日
-    td_value = get_td_by_city(td_data, city)
-    if td_value is not None:
-        Td = td_value
-    else:
+    if Td is None:
         Td = 30.0  # 默认值
 
     Ng = 0.1 * Td

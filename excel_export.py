@@ -1,31 +1,70 @@
 # -*- coding: utf-8 -*-
 """
-Excel 计算书导出模块 - 使用 openpyxl（稳定版）
+Excel 计算书导出模块
 """
 
 import io
 from datetime import datetime
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
+
+
+def get_lp_conclusion_text(level_text, N, building_attr="", attr_type=""):
+    """
+    根据防雷等级和建筑属性生成规范依据文本
+    """
+    if level_text == "一类":
+        clause = "第3.0.2条"
+        detail = f"制造、使用或贮存爆炸危险物质，且年平均雷击次数N={N:.6f}次/a大于0.05次/a"
+    elif level_text == "二类":
+        if attr_type in ["crowded", "important", "heritage", "office", "comm", "station", "airport"]:
+            clause = "第3.0.3条"
+            detail = f"人员密集的公共建筑物或重要场所，且年平均雷击次数N={N:.6f}次/a大于0.05次/a"
+        else:
+            clause = "第3.0.3条"
+            detail = f"一般民用建筑，年平均雷击次数N={N:.6f}次/a大于0.25次/a"
+    elif level_text == "三类":
+        if attr_type in ["crowded", "important", "heritage", "office", "comm", "station", "airport"]:
+            clause = "第3.0.4条"
+            detail = f"人员密集的公共建筑物或重要场所，年平均雷击次数N={N:.6f}次/a在0.01~0.05次/a之间"
+        else:
+            clause = "第3.0.4条"
+            detail = f"一般民用建筑，年平均雷击次数N={N:.6f}次/a在0.05~0.25次/a之间"
+    else:
+        clause = "第3.0.4条"
+        detail = f"年平均雷击次数N={N:.6f}次/a小于0.01次/a，可不设防雷"
+
+    return f"根据GB 50057-2010《建筑物防雷设计规范》{clause}规定，{detail}，应判定为{level_text}防雷建筑物。"
+
+
+def get_ep_conclusion_text(ep_level_text, E):
+    """根据电子防护等级生成规范依据文本"""
+    if ep_level_text == "A级":
+        detail = f"雷电防护等级为A级，拦截效率E={E:.4f} > 0.98"
+    elif ep_level_text == "B级":
+        detail = f"雷电防护等级为B级，拦截效率0.95 < E={E:.4f} ≤ 0.98"
+    elif ep_level_text == "C级":
+        detail = f"雷电防护等级为C级，拦截效率0.90 < E={E:.4f} ≤ 0.95"
+    elif ep_level_text == "D级":
+        detail = f"雷电防护等级为D级，拦截效率0.80 < E={E:.4f} ≤ 0.90"
+    else:
+        detail = f"雷电防护等级低于D级，拦截效率E={E:.4f} ≤ 0.80，可不设防护"
+
+    return f"根据GB 50343-2012《建筑物电子信息系统防雷技术规范》第5.4.1条规定，{detail}，应判定为{ep_level_text}。"
 
 
 def export_excel_report(lp_result, ep_result, building_params,
                         cable_params, c_factors, level_text, ep_level_text,
                         export_mode='combined', has_ep=True,
                         building_attr="", attr_type=""):
-    """
-    导出 Excel 计算书
-    """
+    """导出 Excel 计算书（合并版）"""
     wb = Workbook()
-
-    # 删除默认的空白sheet
     wb.remove(wb.active)
 
     # ===== Sheet 1: 摘要 =====
     ws1 = wb.create_sheet("摘要", 0)
 
-    # 标题
     ws1.merge_cells('A1:F1')
     cell = ws1['A1']
     cell.value = '建筑物防雷及电子信息防护等级计算书'
@@ -38,10 +77,8 @@ def export_excel_report(lp_result, ep_result, building_params,
     cell.font = Font(name='宋体', size=10)
     cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    # 空行
     ws1.row_dimensions[3].height = 10
 
-    # 建筑物参数
     row = 4
     ws1.merge_cells(f'A{row}:F{row}')
     cell = ws1[f'A{row}']
@@ -53,8 +90,6 @@ def export_excel_report(lp_result, ep_result, building_params,
     for key, value in building_params.items():
         ws1[f'A{row}'] = key
         ws1[f'B{row}'] = str(value)
-        ws1[f'A{row}'].font = Font(name='宋体', size=10)
-        ws1[f'B{row}'].font = Font(name='宋体', size=10)
         row += 1
 
     # 防雷等级结果
@@ -66,17 +101,24 @@ def export_excel_report(lp_result, ep_result, building_params,
     cell.alignment = Alignment(horizontal='left', vertical='center')
     row += 1
 
+    N = lp_result.get('N', 0)
     ws1[f'A{row}'] = '年预计雷击次数 N'
-    ws1[f'B{row}'] = f"{lp_result.get('N', 0):.6f} 次/a"
-    ws1[f'A{row}'].font = Font(name='宋体', size=10)
-    ws1[f'B{row}'].font = Font(name='宋体', size=10)
+    ws1[f'B{row}'] = f"{N:.6f} 次/a"
     row += 1
 
     ws1[f'A{row}'] = '防雷等级'
     ws1[f'B{row}'] = level_text
-    ws1[f'A{row}'].font = Font(name='宋体', size=10)
-    ws1[f'B{row}'].font = Font(name='宋体', size=12, bold=True)
-    ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center')
+    ws1[f'B{row}'].font = Font(name='宋体', size=12, bold=True, color='003366')
+    row += 1
+
+    # 防雷判断依据
+    ws1[f'A{row}'] = '判断依据'
+    conclusion = get_lp_conclusion_text(level_text, N, building_attr, attr_type)
+    ws1.merge_cells(f'B{row}:F{row}')
+    ws1[f'B{row}'] = conclusion
+    ws1[f'B{row}'].font = Font(name='宋体', size=10)
+    ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    ws1.row_dimensions[row].height = 30
     row += 1
 
     # 电子防护等级结果
@@ -91,32 +133,35 @@ def export_excel_report(lp_result, ep_result, building_params,
 
         ws1[f'A{row}'] = '总年预计雷击次数 N'
         ws1[f'B{row}'] = f"{ep_result.get('N', 0):.6f} 次/a"
-        ws1[f'A{row}'].font = Font(name='宋体', size=10)
-        ws1[f'B{row}'].font = Font(name='宋体', size=10)
         row += 1
 
+        E = ep_result.get('E', 0)
         ws1[f'A{row}'] = '拦截效率 E'
-        ws1[f'B{row}'] = f"{ep_result.get('E', 0):.4f}"
-        ws1[f'A{row}'].font = Font(name='宋体', size=10)
-        ws1[f'B{row}'].font = Font(name='宋体', size=10)
+        ws1[f'B{row}'] = f"{E:.4f}"
         row += 1
 
         ws1[f'A{row}'] = '防护等级'
         ws1[f'B{row}'] = ep_level_text
-        ws1[f'A{row}'].font = Font(name='宋体', size=10)
         ws1[f'B{row}'].font = Font(name='宋体', size=12, bold=True)
         color_map = {'A级': 'CC0000', 'B级': 'FF8800', 'C级': '0066CC', 'D级': '008800'}
         if ep_level_text in color_map:
             ws1[f'B{row}'].font = Font(name='宋体', size=12, bold=True, color=color_map[ep_level_text])
-        ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center')
+        row += 1
 
-    # 设置列宽
+        # 电子防护判断依据
+        ws1[f'A{row}'] = '判断依据'
+        ep_conclusion = get_ep_conclusion_text(ep_level_text, E)
+        ws1.merge_cells(f'B{row}:F{row}')
+        ws1[f'B{row}'] = ep_conclusion
+        ws1[f'B{row}'].font = Font(name='宋体', size=10)
+        ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        ws1.row_dimensions[row].height = 30
+
     for col in ['A', 'B', 'C', 'D', 'E', 'F']:
         ws1.column_dimensions[col].width = 20
 
     # ===== Sheet 2: 详细计算过程 =====
     ws2 = wb.create_sheet("详细计算过程")
-
     row = 1
     ws2.merge_cells(f'A{row}:D{row}')
     cell = ws2[f'A{row}']
@@ -125,7 +170,6 @@ def export_excel_report(lp_result, ep_result, building_params,
     cell.alignment = Alignment(horizontal='center', vertical='center')
     row += 1
 
-    # 表头
     headers = ['计算项', '符号', '公式', '结果']
     for col, header in enumerate(headers, 1):
         cell = ws2.cell(row=row, column=col, value=header)
@@ -134,7 +178,6 @@ def export_excel_report(lp_result, ep_result, building_params,
         cell.alignment = Alignment(horizontal='center', vertical='center')
     row += 1
 
-    # 数据行
     lp_data = [
         ('年雷暴日', 'Td', '查表', f"{lp_result.get('Td', 0):.2f} d/a"),
         ('雷击大地密度', 'Ng', '0.1 × Td', f"{lp_result.get('Ng', 0):.4f} 次/(km²·a)"),
@@ -142,7 +185,6 @@ def export_excel_report(lp_result, ep_result, building_params,
         ('等效面积', 'Ae', '按周边情况计算', f"{lp_result.get('Ae', 0):.6f} km²"),
         ('校正系数', 'k', '查表', f"{lp_result.get('k', 0):.2f}"),
         ('年预计雷击次数', 'N', 'k × Ng × Ae', f"{lp_result.get('N', 0):.6f} 次/a"),
-        ('防雷等级', '-', '根据N值判定', level_text),
     ]
 
     for data_row in lp_data:
@@ -152,7 +194,6 @@ def export_excel_report(lp_result, ep_result, building_params,
             cell.alignment = Alignment(horizontal='center', vertical='center')
         row += 1
 
-    # 电子防护计算
     if has_ep and ep_result:
         row += 1
         ws2.merge_cells(f'A{row}:D{row}')
@@ -162,7 +203,6 @@ def export_excel_report(lp_result, ep_result, building_params,
         cell.alignment = Alignment(horizontal='center', vertical='center')
         row += 1
 
-        # 表头
         for col, header in enumerate(headers, 1):
             cell = ws2.cell(row=row, column=col, value=header)
             cell.font = Font(name='黑体', size=10, bold=True)
@@ -179,7 +219,6 @@ def export_excel_report(lp_result, ep_result, building_params,
             ('C因子总和', 'C', 'C1+C2+C3+C4+C5+C6', f"{ep_result.get('C', 0):.2f}"),
             ('可接受最大Nc', 'Nc', '0.58/C', f"{ep_result.get('Nc', 0):.6f} 次/a"),
             ('拦截效率', 'E', '1 - Nc/N', f"{ep_result.get('E', 0):.4f}"),
-            ('防护等级', '-', '根据E值判定', ep_level_text),
         ]
 
         for data_row in ep_data:
@@ -189,7 +228,6 @@ def export_excel_report(lp_result, ep_result, building_params,
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             row += 1
 
-    # 设置列宽
     ws2.column_dimensions['A'].width = 25
     ws2.column_dimensions['B'].width = 15
     ws2.column_dimensions['C'].width = 30
@@ -197,7 +235,6 @@ def export_excel_report(lp_result, ep_result, building_params,
 
     # ===== Sheet 3: 输入参数 =====
     ws3 = wb.create_sheet("输入参数")
-
     row = 1
     ws3.merge_cells(f'A{row}:B{row}')
     cell = ws3[f'A{row}']
@@ -209,8 +246,6 @@ def export_excel_report(lp_result, ep_result, building_params,
     for key, value in building_params.items():
         ws3[f'A{row}'] = key
         ws3[f'B{row}'] = str(value)
-        ws3[f'A{row}'].font = Font(name='宋体', size=10)
-        ws3[f'B{row}'].font = Font(name='宋体', size=10)
         row += 1
 
     if c_factors:
@@ -225,14 +260,11 @@ def export_excel_report(lp_result, ep_result, building_params,
         for key, value in c_factors.items():
             ws3[f'A{row}'] = key
             ws3[f'B{row}'] = f"{value.get('type', '')} = {value.get('val', 0)}"
-            ws3[f'A{row}'].font = Font(name='宋体', size=10)
-            ws3[f'B{row}'].font = Font(name='宋体', size=10)
             row += 1
 
     ws3.column_dimensions['A'].width = 30
     ws3.column_dimensions['B'].width = 40
 
-    # ===== 保存 =====
     file_buffer = io.BytesIO()
     wb.save(file_buffer)
     file_buffer.seek(0)
@@ -242,16 +274,14 @@ def export_excel_report(lp_result, ep_result, building_params,
 def export_excel_separate(lp_result, ep_result, building_params,
                           cable_params, c_factors, level_text, ep_level_text,
                           building_attr="", attr_type=""):
-    """
-    分开导出两份 Excel
-    """
+    """分开导出两份 Excel"""
+
     # ===== 防雷等级计算书 =====
     wb_lp = Workbook()
     wb_lp.remove(wb_lp.active)
 
     ws1 = wb_lp.create_sheet("防雷等级计算", 0)
 
-    # 标题
     ws1.merge_cells('A1:F1')
     cell = ws1['A1']
     cell.value = '建筑物防雷等级计算书'
@@ -278,13 +308,24 @@ def export_excel_separate(lp_result, ep_result, building_params,
     cell.alignment = Alignment(horizontal='left', vertical='center')
     row += 1
 
+    N = lp_result.get('N', 0)
     ws1[f'A{row}'] = '年预计雷击次数 N'
-    ws1[f'B{row}'] = f"{lp_result.get('N', 0):.6f} 次/a"
+    ws1[f'B{row}'] = f"{N:.6f} 次/a"
     row += 1
 
     ws1[f'A{row}'] = '防雷等级'
     ws1[f'B{row}'] = level_text
     ws1[f'B{row}'].font = Font(name='黑体', size=14, bold=True, color='003366')
+    row += 1
+
+    # 判断依据
+    ws1[f'A{row}'] = '判断依据'
+    conclusion = get_lp_conclusion_text(level_text, N, building_attr, attr_type)
+    ws1.merge_cells(f'B{row}:F{row}')
+    ws1[f'B{row}'] = conclusion
+    ws1[f'B{row}'].font = Font(name='宋体', size=10)
+    ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    ws1.row_dimensions[row].height = 30
 
     for col in ['A', 'B']:
         ws1.column_dimensions[col].width = 25
@@ -326,15 +367,26 @@ def export_excel_separate(lp_result, ep_result, building_params,
     row += 1
 
     if ep_result:
+        E = ep_result.get('E', 0)
         ws1[f'A{row}'] = '总年预计雷击次数 N'
         ws1[f'B{row}'] = f"{ep_result.get('N', 0):.6f} 次/a"
         row += 1
         ws1[f'A{row}'] = '拦截效率 E'
-        ws1[f'B{row}'] = f"{ep_result.get('E', 0):.4f}"
+        ws1[f'B{row}'] = f"{E:.4f}"
         row += 1
         ws1[f'A{row}'] = '防护等级'
         ws1[f'B{row}'] = ep_level_text
         ws1[f'B{row}'].font = Font(name='黑体', size=14, bold=True, color='003366')
+        row += 1
+
+        # 判断依据
+        ws1[f'A{row}'] = '判断依据'
+        ep_conclusion = get_ep_conclusion_text(ep_level_text, E)
+        ws1.merge_cells(f'B{row}:F{row}')
+        ws1[f'B{row}'] = ep_conclusion
+        ws1[f'B{row}'].font = Font(name='宋体', size=10)
+        ws1[f'B{row}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        ws1.row_dimensions[row].height = 30
 
     for col in ['A', 'B']:
         ws1.column_dimensions[col].width = 25
